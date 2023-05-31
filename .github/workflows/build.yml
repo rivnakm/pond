@@ -1,0 +1,29 @@
+name: Build Action
+
+on:
+  push:
+    branches:
+      - '*'
+      - '!v*'
+  pull_request:
+    types:
+      - opened
+      - synchronize
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          default: true
+
+      - name: Cargo build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build

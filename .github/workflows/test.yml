@@ -1,0 +1,37 @@
+name: Test Action
+
+on:
+  push:
+    branches:
+      - '*'
+      - '!v*'
+  pull_request:
+    types:
+      - opened
+      - synchronize
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      checks: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          default: true
+
+      - name: Cargo test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+
+      - name: Clippy check
+        uses: actions-rs/clippy-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --all-features
