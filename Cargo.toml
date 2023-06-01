@@ -14,5 +14,8 @@ chrono = { version = "0.4.26", features = ["serde"] }
 rusqlite = { version = "0.29.0", features = ["bundled"] }
 uuid = { version = "1.3.3", features = ["v5", "serde"] }
 
+[target.'cfg(windows)'.dependencies]
+rusqlite = { version = "0.29.0", features = ["winsqlite3"] }
+
 [dev-dependencies]
 rand = "0.8.5"
