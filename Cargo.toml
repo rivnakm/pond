@@ -1,7 +1,11 @@
 [package]
 name = "pond-cache"
+description = "A simple, local, persistent cache for Rust"
 version = "0.1.0"
 edition = "2021"
+authors = ["Mike Rivnak <rivnakm1@gmail.com>"]
+license-file = "LICENSE"
+repository = "https://github.com/mrivnak/pond"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
