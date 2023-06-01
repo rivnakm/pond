@@ -214,4 +214,21 @@ mod tests {
 
         assert_eq!(result, None);
     }
+
+    #[test]
+    fn test_get_nonexistent() {
+        let filename = std::env::temp_dir().join(format!(
+            "pond-test-{}-{}.sqlite",
+            chrono::Local::now().to_rfc3339(),
+            rand::random::<u8>()
+        ));
+
+        let cache = Cache::new(filename).unwrap();
+
+        let key = Uuid::new_v5(&Uuid::NAMESPACE_OID, "uuid".as_bytes());
+
+        let result: Option<String> = cache.get(&key).unwrap();
+
+        assert_eq!(result, None);
+    }
 }
