@@ -1,8 +1,11 @@
-use std::{io::{Error, ErrorKind}, path::PathBuf};
+use std::path::PathBuf;
 
 use chrono::{DateTime, Duration, Utc};
 use rusqlite::Connection;
 use uuid::Uuid;
+
+pub use rusqlite::Error;
+pub use rusqlite::types::{ToSql, FromSql};
 
 pub struct Cache {
     path: PathBuf,
@@ -21,8 +24,7 @@ impl Cache {
     }
 
     pub fn with_time_to_live(path: PathBuf, ttl: Duration) -> Result<Self, Error> {
-        let db = Connection::open(path.as_path())
-            .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
+        let db = Connection::open(path.as_path())?;
 
         db.execute(
             "CREATE TABLE IF NOT EXISTS items (
@@ -31,25 +33,22 @@ impl Cache {
             data    TEXT NOT NULL
         )",
             (), // empty list of parameters.
-        )
-        .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
+        )?;
 
-        db.close().unwrap();
+        db.close().expect("Failed to close database connection");
 
         Ok(Self { path, ttl })
     }
 
-    pub fn get<T: rusqlite::types::FromSql>(&self, key: &Uuid) -> Result<Option<T>, Error> {
-        let db = Connection::open(self.path.as_path())
-            .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
+    pub fn get<T: FromSql>(&self, key: &Uuid) -> Result<Option<T>, Error> {
+        let db = Connection::open(self.path.as_path())?;
 
         let mut stmt = db
             .prepare(
                 "SELECT id, expires, data
                 FROM items
                 WHERE id = ?1",
-            )
-            .unwrap();
+            )?;
 
         let item_id = key.to_string();
         let mut rows = stmt.query([&item_id]).unwrap();
@@ -75,15 +74,14 @@ impl Cache {
         }
     }
 
-    pub fn store<T: rusqlite::types::ToSql>(&self, key: &Uuid, value: T) -> Result<(), Error> {
+    pub fn store<T: ToSql>(&self, key: &Uuid, value: T) -> Result<(), Error> {
         let value = CacheEntry {
             key: *key,
             value,
             expiration: Utc::now() + self.ttl,
         };
 
-        let db = Connection::open(self.path.as_path())
-            .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
+        let db = Connection::open(self.path.as_path())?;
 
         db.execute(
             "INSERT OR REPLACE INTO items (id, expires, data) VALUES (?1, ?2, ?3);",
@@ -92,8 +90,7 @@ impl Cache {
                 &value.expiration.to_rfc3339(),
                 &value.value,
             ),
-        )
-        .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
+        )?;
 
         db.close().unwrap();
         Ok(())
@@ -232,5 +229,12 @@ mod tests {
         let result: Option<String> = cache.get(&key).unwrap();
 
         assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_invalid_path() {
+        let cache = Cache::new(PathBuf::from("invalid/path/db.sqlite"));
+
+        assert!(cache.is_err());
     }
 }
