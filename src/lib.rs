@@ -1,7 +1,4 @@
-use std::{
-    io::{Error, ErrorKind},
-    path::PathBuf,
-};
+use std::{io::{Error, ErrorKind}, path::PathBuf};
 
 use chrono::{DateTime, Duration, Utc};
 use rusqlite::Connection;
@@ -57,7 +54,10 @@ impl Cache {
         let item_id = key.to_string();
         let mut rows = stmt.query([&item_id]).unwrap();
 
-        let row = rows.next().unwrap().unwrap();
+        let Some(row) = rows.next().unwrap() else {
+            return Ok(None);
+        };
+
         let expires: DateTime<Utc> = row
             .get::<usize, String>(1)
             .map(|expires_string| {
@@ -69,9 +69,10 @@ impl Cache {
         let data: T = row.get(2).unwrap();
 
         if expires < Utc::now() {
-            return Ok(None);
+            Ok(None)
+        } else {
+            Ok(Some(data))
         }
-        Ok(Some(data))
     }
 
     pub fn store<T: rusqlite::types::ToSql>(&self, key: &Uuid, value: T) -> Result<(), Error> {
@@ -103,16 +104,17 @@ impl Cache {
 mod tests {
     use super::*;
 
-    fn store_manual(path: PathBuf, key: &Uuid, value: String, expires: DateTime<Utc>) -> Result<(), Error> {
+    fn store_manual(
+        path: PathBuf,
+        key: &Uuid,
+        value: String,
+        expires: DateTime<Utc>,
+    ) -> Result<(), Error> {
         let db = Connection::open(path.as_path()).unwrap();
 
         db.execute(
             "INSERT OR REPLACE INTO items (id, expires, data) VALUES (?1, ?2, ?3);",
-            (
-                &key.to_string(),
-                &expires.to_rfc3339(),
-                &value,
-            ),
+            (&key.to_string(), &expires.to_rfc3339(), &value),
         )
         .unwrap();
 
@@ -124,7 +126,7 @@ mod tests {
     fn test_new() {
         let filename = std::env::temp_dir().join(format!(
             "pond-test-{}-{}.sqlite",
-            chrono::Local::now().to_rfc3339(),
+            Uuid::new_v4(),
             rand::random::<u8>()
         ));
         let cache = Cache::new(filename.clone()).unwrap();
@@ -136,7 +138,7 @@ mod tests {
     fn test_load_existing() {
         let filename = std::env::temp_dir().join(format!(
             "pond-test-{}-{}.sqlite",
-            chrono::Local::now().to_rfc3339(),
+            Uuid::new_v4(),
             rand::random::<u8>()
         ));
         let _ = Cache::new(filename.clone()).unwrap();
@@ -147,7 +149,7 @@ mod tests {
     fn test_time_to_live() {
         let filename = std::env::temp_dir().join(format!(
             "pond-test-{}-{}.sqlite",
-            chrono::Local::now().to_rfc3339(),
+            Uuid::new_v4(),
             rand::random::<u8>()
         ));
         let cache = Cache::with_time_to_live(filename.clone(), Duration::minutes(5)).unwrap();
@@ -159,7 +161,7 @@ mod tests {
     fn test_store_get() {
         let filename = std::env::temp_dir().join(format!(
             "pond-test-{}-{}.sqlite",
-            chrono::Local::now().to_rfc3339(),
+            Uuid::new_v4(),
             rand::random::<u8>()
         ));
 
@@ -178,7 +180,7 @@ mod tests {
     fn test_store_existing() {
         let filename = std::env::temp_dir().join(format!(
             "pond-test-{}-{}.sqlite",
-            chrono::Local::now().to_rfc3339(),
+            Uuid::new_v4(),
             rand::random::<u8>()
         ));
 
@@ -200,7 +202,7 @@ mod tests {
     fn test_get_expired() {
         let filename = std::env::temp_dir().join(format!(
             "pond-test-{}-{}.sqlite",
-            chrono::Local::now().to_rfc3339(),
+            Uuid::new_v4(),
             rand::random::<u8>()
         ));
 
@@ -210,6 +212,23 @@ mod tests {
         let value = String::from("Hello, world!");
 
         store_manual(filename, &key, value, Utc::now() - Duration::minutes(5)).unwrap();
+        let result: Option<String> = cache.get(&key).unwrap();
+
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_get_nonexistent() {
+        let filename = std::env::temp_dir().join(format!(
+            "pond-test-{}-{}.sqlite",
+            Uuid::new_v4(),
+            rand::random::<u8>()
+        ));
+
+        let cache = Cache::new(filename).unwrap();
+
+        let key = Uuid::new_v5(&Uuid::NAMESPACE_OID, "uuid".as_bytes());
+
         let result: Option<String> = cache.get(&key).unwrap();
 
         assert_eq!(result, None);
