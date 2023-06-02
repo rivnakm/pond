@@ -1,6 +1,6 @@
 use std::{
     io::{Error, ErrorKind},
-    path::PathBuf,
+    path::PathBuf, fs::OpenOptions,
 };
 
 use chrono::{DateTime, Duration, Utc};
@@ -24,6 +24,9 @@ impl Cache {
     }
 
     pub fn with_time_to_live(path: PathBuf, ttl: Duration) -> Result<Self, Error> {
+        // Create the file if it doesn't exist.
+        let _ = OpenOptions::new().write(true).create(true).open(path.as_path());
+        
         let db = Connection::open(path.as_path())
             .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
 
