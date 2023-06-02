@@ -57,7 +57,10 @@ impl Cache {
         let item_id = key.to_string();
         let mut rows = stmt.query([&item_id]).unwrap();
 
-        let row = rows.next().unwrap().unwrap();
+        let Some(row) = rows.next().unwrap() else {
+            return Ok(None);
+        };
+
         let expires: DateTime<Utc> = row
             .get::<usize, String>(1)
             .map(|expires_string| {
@@ -69,9 +72,10 @@ impl Cache {
         let data: T = row.get(2).unwrap();
 
         if expires < Utc::now() {
-            return Ok(None);
+            Ok(None)
+        } else {
+            Ok(Some(data))
         }
-        Ok(Some(data))
     }
 
     pub fn store<T: rusqlite::types::ToSql>(&self, key: &Uuid, value: T) -> Result<(), Error> {
@@ -103,16 +107,17 @@ impl Cache {
 mod tests {
     use super::*;
 
-    fn store_manual(path: PathBuf, key: &Uuid, value: String, expires: DateTime<Utc>) -> Result<(), Error> {
+    fn store_manual(
+        path: PathBuf,
+        key: &Uuid,
+        value: String,
+        expires: DateTime<Utc>,
+    ) -> Result<(), Error> {
         let db = Connection::open(path.as_path()).unwrap();
 
         db.execute(
             "INSERT OR REPLACE INTO items (id, expires, data) VALUES (?1, ?2, ?3);",
-            (
-                &key.to_string(),
-                &expires.to_rfc3339(),
-                &value,
-            ),
+            (&key.to_string(), &expires.to_rfc3339(), &value),
         )
         .unwrap();
 
