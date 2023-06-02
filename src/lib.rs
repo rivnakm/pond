@@ -1,7 +1,4 @@
-use std::{
-    io::{Error, ErrorKind},
-    path::PathBuf, fs::OpenOptions,
-};
+use std::{io::{Error, ErrorKind}, path::PathBuf};
 
 use chrono::{DateTime, Duration, Utc};
 use rusqlite::Connection;
@@ -24,9 +21,6 @@ impl Cache {
     }
 
     pub fn with_time_to_live(path: PathBuf, ttl: Duration) -> Result<Self, Error> {
-        // Create the file if it doesn't exist.
-        let _ = OpenOptions::new().write(true).create(true).open(path.as_path());
-        
         let db = Connection::open(path.as_path())
             .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
 
@@ -132,7 +126,7 @@ mod tests {
     fn test_new() {
         let filename = std::env::temp_dir().join(format!(
             "pond-test-{}-{}.sqlite",
-            chrono::Local::now().to_rfc3339(),
+            Uuid::new_v4(),
             rand::random::<u8>()
         ));
         let cache = Cache::new(filename.clone()).unwrap();
@@ -144,7 +138,7 @@ mod tests {
     fn test_load_existing() {
         let filename = std::env::temp_dir().join(format!(
             "pond-test-{}-{}.sqlite",
-            chrono::Local::now().to_rfc3339(),
+            Uuid::new_v4(),
             rand::random::<u8>()
         ));
         let _ = Cache::new(filename.clone()).unwrap();
@@ -155,7 +149,7 @@ mod tests {
     fn test_time_to_live() {
         let filename = std::env::temp_dir().join(format!(
             "pond-test-{}-{}.sqlite",
-            chrono::Local::now().to_rfc3339(),
+            Uuid::new_v4(),
             rand::random::<u8>()
         ));
         let cache = Cache::with_time_to_live(filename.clone(), Duration::minutes(5)).unwrap();
@@ -167,7 +161,7 @@ mod tests {
     fn test_store_get() {
         let filename = std::env::temp_dir().join(format!(
             "pond-test-{}-{}.sqlite",
-            chrono::Local::now().to_rfc3339(),
+            Uuid::new_v4(),
             rand::random::<u8>()
         ));
 
@@ -186,7 +180,7 @@ mod tests {
     fn test_store_existing() {
         let filename = std::env::temp_dir().join(format!(
             "pond-test-{}-{}.sqlite",
-            chrono::Local::now().to_rfc3339(),
+            Uuid::new_v4(),
             rand::random::<u8>()
         ));
 
@@ -208,7 +202,7 @@ mod tests {
     fn test_get_expired() {
         let filename = std::env::temp_dir().join(format!(
             "pond-test-{}-{}.sqlite",
-            chrono::Local::now().to_rfc3339(),
+            Uuid::new_v4(),
             rand::random::<u8>()
         ));
 
@@ -227,7 +221,7 @@ mod tests {
     fn test_get_nonexistent() {
         let filename = std::env::temp_dir().join(format!(
             "pond-test-{}-{}.sqlite",
-            chrono::Local::now().to_rfc3339(),
+            Uuid::new_v4(),
             rand::random::<u8>()
         ));
 

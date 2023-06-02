@@ -16,3 +16,4 @@ uuid = { version = "1.3.3", features = ["v5", "serde"] }
 
 [dev-dependencies]
 rand = "0.8.5"
+uuid = { version = "1.3.3", features = ["v4"] }
