@@ -214,7 +214,7 @@ mod tests {
 
         let cache = Cache::new(filename).unwrap();
 
-        let key = Uuid::new_v5(&Uuid::NAMESPACE_OID, "uuid".as_bytes());
+        let key = Uuid::new_v4();
         let value = String::from("Hello, world!");
 
         cache.store(&key, value.clone()).unwrap();
@@ -233,7 +233,7 @@ mod tests {
 
         let cache = Cache::new(filename).unwrap();
 
-        let key = Uuid::new_v5(&Uuid::NAMESPACE_OID, "uuid".as_bytes());
+        let key = Uuid::new_v4();
         let value = String::from("Hello, world!");
 
         cache.store(&key, value).unwrap();
@@ -255,7 +255,7 @@ mod tests {
 
         let cache = Cache::new(filename.clone()).unwrap();
 
-        let key = Uuid::new_v5(&Uuid::NAMESPACE_OID, "uuid".as_bytes());
+        let key = Uuid::new_v4();
         let value = String::from("Hello, world!");
 
         store_manual(filename, &key, value, Utc::now() - Duration::minutes(5)).unwrap();
@@ -274,7 +274,7 @@ mod tests {
 
         let cache = Cache::new(filename).unwrap();
 
-        let key = Uuid::new_v5(&Uuid::NAMESPACE_OID, "uuid".as_bytes());
+        let key = Uuid::new_v4();
 
         let result: Option<String> = cache.get(&key).unwrap();
 
@@ -298,7 +298,7 @@ mod tests {
 
         let cache = Cache::with_time_to_live(filename.clone(), Duration::minutes(5)).unwrap();
 
-        let key = Uuid::new_v5(&Uuid::NAMESPACE_OID, "uuid".as_bytes());
+        let key = Uuid::new_v4();
         let value = String::from("Hello, world!");
 
         store_manual(
@@ -331,7 +331,7 @@ mod tests {
 
         let cache = Cache::with_time_to_live(filename.clone(), Duration::minutes(5)).unwrap();
 
-        let key = Uuid::new_v5(&Uuid::NAMESPACE_OID, "uuid".as_bytes());
+        let key = Uuid::new_v4();
         let value = String::from("Hello, world!");
 
         store_manual(
