@@ -4,8 +4,8 @@ use chrono::{DateTime, Duration, Utc};
 use rusqlite::Connection;
 use uuid::Uuid;
 
+pub use rusqlite::types::{FromSql, ToSql};
 pub use rusqlite::Error;
-pub use rusqlite::types::{ToSql, FromSql};
 
 pub struct Cache {
     path: PathBuf,
@@ -43,12 +43,11 @@ impl Cache {
     pub fn get<T: FromSql>(&self, key: &Uuid) -> Result<Option<T>, Error> {
         let db = Connection::open(self.path.as_path())?;
 
-        let mut stmt = db
-            .prepare(
-                "SELECT id, expires, data
+        let mut stmt = db.prepare(
+            "SELECT id, expires, data
                 FROM items
                 WHERE id = ?1",
-            )?;
+        )?;
 
         let item_id = key.to_string();
         let mut rows = stmt.query([&item_id]).unwrap();
@@ -95,6 +94,18 @@ impl Cache {
         db.close().unwrap();
         Ok(())
     }
+
+    pub fn clean(&self) -> Result<(), Error> {
+        let db = Connection::open(self.path.as_path())?;
+
+        db.execute(
+            "DELETE FROM items WHERE expires < ?1;",
+            (&Utc::now().to_rfc3339(),),
+        )?;
+
+        db.close().unwrap();
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -117,6 +128,39 @@ mod tests {
 
         db.close().unwrap();
         Ok(())
+    }
+
+    fn get_manual<T: FromSql>(path: PathBuf, key: &Uuid) -> Result<Option<CacheEntry<T>>, Error> {
+        let db = Connection::open(path.as_path())?;
+
+        let mut stmt = db.prepare(
+            "SELECT id, expires, data
+                FROM items
+                WHERE id = ?1",
+        )?;
+
+        let item_id = key.to_string();
+        let mut rows = stmt.query([&item_id]).unwrap();
+
+        let Some(row) = rows.next().unwrap() else {
+            return Ok(None);
+        };
+
+        let expires: DateTime<Utc> = row
+            .get::<usize, String>(1)
+            .map(|expires_string| {
+                DateTime::parse_from_rfc3339(&expires_string)
+                    .unwrap()
+                    .with_timezone(&Utc)
+            })
+            .unwrap();
+        let data: T = row.get(2).unwrap();
+
+        Ok(Some(CacheEntry {
+            key: *key,
+            value: data,
+            expiration: expires,
+        }))
     }
 
     #[test]
@@ -236,5 +280,64 @@ mod tests {
         let cache = Cache::new(PathBuf::from("invalid/path/db.sqlite"));
 
         assert!(cache.is_err());
+    }
+
+    #[test]
+    fn test_clean() {
+        let filename = std::env::temp_dir().join(format!(
+            "pond-test-{}-{}.sqlite",
+            Uuid::new_v4(),
+            rand::random::<u8>()
+        ));
+
+        let cache = Cache::with_time_to_live(filename.clone(), Duration::minutes(5)).unwrap();
+
+        let key = Uuid::new_v5(&Uuid::NAMESPACE_OID, "uuid".as_bytes());
+        let value = String::from("Hello, world!");
+
+        store_manual(filename.clone(), &key, value.clone(), Utc::now() - Duration::minutes(5)).unwrap();
+
+        let result: Option<CacheEntry<String>> = get_manual(filename.clone(), &key).unwrap();
+        if let Some(result) = result {
+            assert_eq!(result.value, value);
+        } else {
+            panic!("Expected result to be Some");
+        }
+
+        cache.clean().unwrap();
+        let result: Option<CacheEntry<String>> = get_manual(filename, &key).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_clean_leaves_unexpired() {
+        let filename = std::env::temp_dir().join(format!(
+            "pond-test-{}-{}.sqlite",
+            Uuid::new_v4(),
+            rand::random::<u8>()
+        ));
+
+        let cache = Cache::with_time_to_live(filename.clone(), Duration::minutes(5)).unwrap();
+
+        let key = Uuid::new_v5(&Uuid::NAMESPACE_OID, "uuid".as_bytes());
+        let value = String::from("Hello, world!");
+
+        store_manual(filename.clone(), &key, value.clone(), Utc::now() + Duration::minutes(15)).unwrap();
+
+        let result: Option<CacheEntry<String>> = get_manual(filename.clone(), &key).unwrap();
+        if let Some(result) = result {
+            assert_eq!(result.value, value);
+        } else {
+            panic!("Expected result to be Some");
+        }
+
+        cache.clean().unwrap();
+
+        let result: Option<CacheEntry<String>> = get_manual(filename, &key).unwrap();
+        if let Some(result) = result {
+            assert_eq!(result.value, value);
+        } else {
+            panic!("Expected result to be Some");
+        }
     }
 }
