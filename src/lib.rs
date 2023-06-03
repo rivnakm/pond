@@ -66,6 +66,10 @@ impl Cache {
             .unwrap();
         let data: T = row.get(2).unwrap();
 
+        drop(rows);
+        drop(stmt);
+        db.close().expect("Failed to close database connection");
+
         if expires < Utc::now() {
             Ok(None)
         } else {
@@ -91,7 +95,8 @@ impl Cache {
             ),
         )?;
 
-        db.close().unwrap();
+        db.close().expect("Failed to close database connection");
+
         Ok(())
     }
 
@@ -103,7 +108,8 @@ impl Cache {
             (&Utc::now().to_rfc3339(),),
         )?;
 
-        db.close().unwrap();
+        db.close().expect("Failed to close database connection");
+
         Ok(())
     }
 }
@@ -295,7 +301,13 @@ mod tests {
         let key = Uuid::new_v5(&Uuid::NAMESPACE_OID, "uuid".as_bytes());
         let value = String::from("Hello, world!");
 
-        store_manual(filename.clone(), &key, value.clone(), Utc::now() - Duration::minutes(5)).unwrap();
+        store_manual(
+            filename.clone(),
+            &key,
+            value.clone(),
+            Utc::now() - Duration::minutes(5),
+        )
+        .unwrap();
 
         let result: Option<CacheEntry<String>> = get_manual(filename.clone(), &key).unwrap();
         if let Some(result) = result {
@@ -322,7 +334,13 @@ mod tests {
         let key = Uuid::new_v5(&Uuid::NAMESPACE_OID, "uuid".as_bytes());
         let value = String::from("Hello, world!");
 
-        store_manual(filename.clone(), &key, value.clone(), Utc::now() + Duration::minutes(15)).unwrap();
+        store_manual(
+            filename.clone(),
+            &key,
+            value.clone(),
+            Utc::now() + Duration::minutes(15),
+        )
+        .unwrap();
 
         let result: Option<CacheEntry<String>> = get_manual(filename.clone(), &key).unwrap();
         if let Some(result) = result {
