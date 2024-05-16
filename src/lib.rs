@@ -1,8 +1,8 @@
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::PathBuf;
 
 use chrono::{DateTime, Duration, Utc};
 use rusqlite::Connection;
-use uuid::Uuid;
 
 pub use rusqlite::types::{FromSql, ToSql};
 pub use rusqlite::Error;
@@ -12,8 +12,12 @@ pub struct Cache {
     ttl: Duration,
 }
 
-pub struct CacheEntry<T> {
-    key: Uuid,
+#[derive(Debug)]
+pub struct CacheEntry<T>
+where
+    T: ToSql + FromSql,
+{
+    key: u32,
     value: T,
     expiration: DateTime<Utc>,
 }
@@ -40,7 +44,11 @@ impl Cache {
         Ok(Self { path, ttl })
     }
 
-    pub fn get<T: FromSql>(&self, key: &Uuid) -> Result<Option<T>, Error> {
+    pub fn get<K, T>(&self, key: K) -> Result<Option<T>, Error>
+    where
+        K: Hash,
+        T: ToSql + FromSql,
+    {
         let db = Connection::open(self.path.as_path())?;
 
         let mut stmt = db.prepare(
@@ -49,8 +57,12 @@ impl Cache {
                 WHERE id = ?1",
         )?;
 
-        let item_id = key.to_string();
-        let mut rows = stmt.query([&item_id]).unwrap();
+        let mut hasher = DefaultHasher::new();
+        let hash = {
+            key.hash(&mut hasher);
+            hasher.finish() as u32
+        };
+        let mut rows = stmt.query([hash]).unwrap();
 
         let Some(row) = rows.next().unwrap() else {
             return Ok(None);
@@ -77,9 +89,19 @@ impl Cache {
         }
     }
 
-    pub fn store<T: ToSql>(&self, key: &Uuid, value: T) -> Result<(), Error> {
+    pub fn store<K, T>(&self, key: K, value: T) -> Result<(), Error>
+    where
+        K: Hash,
+        T: ToSql + FromSql,
+    {
+        let mut hasher = DefaultHasher::new();
+        let hash = {
+            key.hash(&mut hasher);
+            hasher.finish() as u32
+        };
+
         let value = CacheEntry {
-            key: *key,
+            key: hash,
             value,
             expiration: Utc::now() + self.ttl,
         };
@@ -116,19 +138,27 @@ impl Cache {
 
 #[cfg(test)]
 mod tests {
+    use uuid::Uuid;
+
     use super::*;
 
     fn store_manual(
         path: PathBuf,
-        key: &Uuid,
+        key: String,
         value: String,
         expires: DateTime<Utc>,
     ) -> Result<(), Error> {
+        let mut hasher = DefaultHasher::new();
+        let hash = {
+            key.hash(&mut hasher);
+            hasher.finish() as u32
+        };
+
         let db = Connection::open(path.as_path()).unwrap();
 
         db.execute(
             "INSERT OR REPLACE INTO items (id, expires, data) VALUES (?1, ?2, ?3);",
-            (&key.to_string(), &expires.to_rfc3339(), &value),
+            (hash, &expires.to_rfc3339(), &value),
         )
         .unwrap();
 
@@ -136,7 +166,10 @@ mod tests {
         Ok(())
     }
 
-    fn get_manual<T: FromSql>(path: PathBuf, key: &Uuid) -> Result<Option<CacheEntry<T>>, Error> {
+    fn get_manual<T: ToSql + FromSql>(
+        path: PathBuf,
+        key: String,
+    ) -> Result<Option<CacheEntry<T>>, Error> {
         let db = Connection::open(path.as_path())?;
 
         let mut stmt = db.prepare(
@@ -145,8 +178,13 @@ mod tests {
                 WHERE id = ?1",
         )?;
 
-        let item_id = key.to_string();
-        let mut rows = stmt.query([&item_id]).unwrap();
+        let mut hasher = DefaultHasher::new();
+        let hash = {
+            key.hash(&mut hasher);
+            hasher.finish() as u32
+        };
+
+        let mut rows = stmt.query([hash]).unwrap();
 
         let Some(row) = rows.next().unwrap() else {
             return Ok(None);
@@ -162,8 +200,12 @@ mod tests {
             .unwrap();
         let data: T = row.get(2).unwrap();
 
+        drop(rows);
+        drop(stmt);
+        db.close().expect("Failed to close database connection");
+
         Ok(Some(CacheEntry {
-            key: *key,
+            key: hash,
             value: data,
             expiration: expires,
         }))
@@ -217,8 +259,8 @@ mod tests {
         let key = Uuid::new_v4();
         let value = String::from("Hello, world!");
 
-        cache.store(&key, value.clone()).unwrap();
-        let result: Option<_> = cache.get(&key).unwrap();
+        cache.store(key, value.clone()).unwrap();
+        let result: Option<_> = cache.get(key).unwrap();
 
         assert_eq!(result, Some(value));
     }
@@ -236,11 +278,11 @@ mod tests {
         let key = Uuid::new_v4();
         let value = String::from("Hello, world!");
 
-        cache.store(&key, value).unwrap();
+        cache.store(key, value).unwrap();
 
         let value = String::from("Hello, world! 2");
-        cache.store(&key, value.clone()).unwrap();
-        let result: Option<_> = cache.get(&key).unwrap();
+        cache.store(key, value.clone()).unwrap();
+        let result: Option<_> = cache.get(key).unwrap();
 
         assert_eq!(result, Some(value));
     }
@@ -258,8 +300,14 @@ mod tests {
         let key = Uuid::new_v4();
         let value = String::from("Hello, world!");
 
-        store_manual(filename, &key, value, Utc::now() - Duration::minutes(5)).unwrap();
-        let result: Option<String> = cache.get(&key).unwrap();
+        store_manual(
+            filename,
+            key.to_string(),
+            value,
+            Utc::now() - Duration::minutes(5),
+        )
+        .unwrap();
+        let result: Option<String> = cache.get(key).unwrap();
 
         assert_eq!(result, None);
     }
@@ -276,7 +324,7 @@ mod tests {
 
         let key = Uuid::new_v4();
 
-        let result: Option<String> = cache.get(&key).unwrap();
+        let result: Option<String> = cache.get(key).unwrap();
 
         assert_eq!(result, None);
     }
@@ -298,18 +346,18 @@ mod tests {
 
         let cache = Cache::with_time_to_live(filename.clone(), Duration::minutes(5)).unwrap();
 
-        let key = Uuid::new_v4();
+        let key = Uuid::new_v4().to_string();
         let value = String::from("Hello, world!");
 
         store_manual(
             filename.clone(),
-            &key,
+            key.clone(),
             value.clone(),
             Utc::now() - Duration::minutes(5),
         )
         .unwrap();
 
-        let result: Option<CacheEntry<String>> = get_manual(filename.clone(), &key).unwrap();
+        let result: Option<CacheEntry<String>> = get_manual(filename.clone(), key.clone()).unwrap();
         if let Some(result) = result {
             assert_eq!(result.value, value);
         } else {
@@ -317,7 +365,7 @@ mod tests {
         }
 
         cache.clean().unwrap();
-        let result: Option<CacheEntry<String>> = get_manual(filename, &key).unwrap();
+        let result: Option<CacheEntry<String>> = get_manual(filename, key).unwrap();
         assert!(result.is_none());
     }
 
@@ -331,18 +379,18 @@ mod tests {
 
         let cache = Cache::with_time_to_live(filename.clone(), Duration::minutes(5)).unwrap();
 
-        let key = Uuid::new_v4();
+        let key = Uuid::new_v4().to_string();
         let value = String::from("Hello, world!");
 
         store_manual(
             filename.clone(),
-            &key,
+            key.clone(),
             value.clone(),
             Utc::now() + Duration::minutes(15),
         )
         .unwrap();
 
-        let result: Option<CacheEntry<String>> = get_manual(filename.clone(), &key).unwrap();
+        let result: Option<CacheEntry<String>> = get_manual(filename.clone(), key.clone()).unwrap();
         if let Some(result) = result {
             assert_eq!(result.value, value);
         } else {
@@ -351,7 +399,7 @@ mod tests {
 
         cache.clean().unwrap();
 
-        let result: Option<CacheEntry<String>> = get_manual(filename, &key).unwrap();
+        let result: Option<CacheEntry<String>> = get_manual(filename, key).unwrap();
         if let Some(result) = result {
             assert_eq!(result.value, value);
         } else {
