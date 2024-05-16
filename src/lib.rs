@@ -1,5 +1,6 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::PathBuf;
+use std::time::Instant;
 
 use chrono::{DateTime, Duration, Utc};
 use rusqlite::Connection;
@@ -94,6 +95,19 @@ impl Cache {
         K: Hash,
         T: ToSql + FromSql,
     {
+        self.store_with_expiration(key, value, Utc::now() + self.ttl)
+    }
+
+    pub fn store_with_expiration<K, T>(
+        &self,
+        key: K,
+        value: T,
+        expiration: DateTime<Utc>,
+    ) -> Result<(), Error>
+    where
+        K: Hash,
+        T: ToSql + FromSql,
+    {
         let mut hasher = DefaultHasher::new();
         let hash = {
             key.hash(&mut hasher);
@@ -103,7 +117,7 @@ impl Cache {
         let value = CacheEntry {
             key: hash,
             value,
-            expiration: Utc::now() + self.ttl,
+            expiration,
         };
 
         let db = Connection::open(self.path.as_path())?;
