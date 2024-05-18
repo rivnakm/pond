@@ -10,11 +10,14 @@ repository = "https://github.com/mrivnak/pond"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-chrono = { version = "0.4.33", features = ["serde"] }
-rusqlite = { version = "0.30.0", features = ["bundled"] }
-uuid = { version = "1.6.1", features = ["serde"] }
+bitcode = { version = "0.6.0", default-features = false, features = ["serde"] }
+chrono = { version = "0.4.38", features = ["serde"] }
+rusqlite = { version = "0.31.0", features = ["blob", "bundled"] }
+serde = "1.0.202"
 
 [dev-dependencies]
+bitcode = { version = "0.6.0", features = ["serde"] }
 rand = "0.8.5"
-uuid = { version = "1.6.1", features = ["v4"] }
+serde = { version = "1.0.202", features = ["derive"] }
+uuid = { version = "1.8.0", features = ["v4", "serde"] }
 
