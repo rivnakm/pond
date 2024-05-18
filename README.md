@@ -17,14 +17,23 @@ use uuid::Uuid;
 
 use pond_cache::Cache;
 
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+struct User {
+    pub first_name: String,
+    pub last_name: String,
+}
+
 fn main() {
     let cache = Cache::new(PathBuf::from("./db.sqlite")).unwrap();
 
-    let key = Uuid::new_v4();
-    let value = String::from("Hello, world!");
+    let user_id = Uuid::new_v4();
+    let user = User {
+        first_name: "John",
+        last_name: "Doe",
+    };
 
-    cache.store(&key, value).unwrap();
+    cache.store(&user_id, user).unwrap();
 
-    let result: Option<String> = cache.get(&key).unwrap();
+    let result: Option<User> = cache.get(&key).unwrap();
 }
 ```

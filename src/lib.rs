@@ -1,3 +1,5 @@
+#![crate_name = "pond_cache"]
+
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::PathBuf;
 
@@ -8,6 +10,7 @@ use serde::Serialize;
 
 pub use rusqlite::Error;
 
+/// Pond cache struct
 pub struct Cache<T> {
     path: PathBuf,
     ttl: Duration,
@@ -25,10 +28,48 @@ where
 }
 
 impl<T: Serialize + DeserializeOwned + Clone> Cache<T> {
+    /// Create a new cache with a default time-to-live of 10 minutes
+    ///
+    /// # Arguments
+    /// * `path` - Path to the SQLite database file
+    ///
+    /// # Returns
+    /// A new cache instance
+    ///
+    /// # Errors
+    /// Returns an error if the database connection cannot be established
+    ///
+    /// # Example
+    /// ```rust
+    /// use pond_cache::Cache;
+    /// use std::path::PathBuf;
+    ///
+    /// let cache: Cache<String> = Cache::new(PathBuf::from("cache.db")).expect("Failed to create cache");
+    /// ```
     pub fn new(path: PathBuf) -> Result<Self, Error> {
         Self::with_time_to_live(path, Duration::minutes(10))
     }
 
+    /// Create a new cache with a custom time-to-live
+    ///
+    /// # Arguments
+    /// * `path` - Path to the SQLite database file
+    /// * `ttl` - Time-to-live for cache entries
+    ///
+    /// # Returns
+    /// A new cache instance
+    ///
+    /// # Errors
+    /// Returns an error if the database connection cannot be established
+    ///
+    /// # Example
+    /// ```rust
+    /// use pond_cache::Cache;
+    /// use std::path::PathBuf;
+    /// use chrono::Duration;
+    ///
+    /// let cache: Cache<String> = Cache::with_time_to_live(PathBuf::from("cache.db"), Duration::minutes(5)).expect("Failed to create cache");
+    /// ```
     pub fn with_time_to_live(path: PathBuf, ttl: Duration) -> Result<Self, Error> {
         let db = Connection::open(path.as_path())?;
 
@@ -50,10 +91,28 @@ impl<T: Serialize + DeserializeOwned + Clone> Cache<T> {
         })
     }
 
-    pub fn get<K>(&self, key: K) -> Result<Option<T>, Error>
-    where
-        K: Hash,
-    {
+    /// Retrieve a value from the cache
+    ///
+    /// # Arguments
+    /// * `key` - Key to retrieve the value for
+    ///
+    /// # Returns
+    /// The value associated with the key, if it exists and has not expired
+    /// If the value does not exist or has expired, returns `None`
+    ///
+    /// # Errors
+    /// Returns an error if the database connection cannot be established
+    ///
+    /// # Example
+    /// ```rust
+    /// use pond_cache::Cache;
+    /// use std::path::PathBuf;
+    ///
+    /// let cache: Cache<String> = Cache::new(PathBuf::from("cache.db")).expect("Failed to create cache");
+    /// let key = "key";
+    /// let value: Option<String> = cache.get(key).expect("Failed to get value");
+    /// ```
+    pub fn get<K: Hash>(&self, key: K) -> Result<Option<T>, Error> {
         let db = Connection::open(self.path.as_path())?;
 
         let mut stmt = db.prepare(
@@ -96,10 +155,63 @@ impl<T: Serialize + DeserializeOwned + Clone> Cache<T> {
         }
     }
 
+    /// Store a value in the cache
+    /// The value will be stored with the cache's time-to-live
+    /// If the value already exists, it will be replaced
+    ///
+    /// # Arguments
+    /// * `key` - Key to store the value under
+    /// * `value` - Value to store
+    ///
+    /// # Returns
+    /// Ok if the value was stored successfully
+    /// Err if the value could not be stored
+    ///
+    /// # Errors
+    /// Returns an error if the database connection cannot be established
+    ///
+    /// # Example
+    /// ```rust
+    /// use pond_cache::Cache;
+    /// use std::path::PathBuf;
+    ///
+    /// let cache: Cache<String> = Cache::new(PathBuf::from("cache.db")).expect("Failed to create cache");
+    /// let key = "key";
+    /// let value = String::from("value");
+    /// cache.store(key, value).expect("Failed to store value");
+    /// ```
     pub fn store<K: Hash>(&self, key: K, value: T) -> Result<(), Error> {
         self.store_with_expiration(key, value, Utc::now() + self.ttl)
     }
 
+    /// Store a value in the cache with a custom expiration time
+    /// If the value already exists, it will be replaced
+    ///
+    /// # Arguments
+    /// * `key` - Key to store the value under
+    /// * `value` - Value to store
+    /// * `expiration` - Expiration time for the value
+    ///
+    /// # Returns
+    /// Ok if the value was stored successfully
+    /// Err if the value could not be stored
+    ///
+    /// # Errors
+    /// Returns an error if the database connection cannot be established
+    ///
+    /// # Example
+    /// ```rust
+    /// use pond_cache::Cache;
+    /// use std::path::PathBuf;
+    /// use chrono::{Duration, Utc};
+    ///
+    /// let cache: Cache<String> = Cache::new(PathBuf::from("cache.db")).expect("Failed to create cache");
+    /// let key = "key";
+    /// let value = String::from("value");
+    /// let expiration = Utc::now() + Duration::minutes(5);
+    ///
+    /// cache.store_with_expiration(key, value, expiration).expect("Failed to store value");
+    /// ```
     pub fn store_with_expiration<K: Hash>(
         &self,
         key: K,
@@ -134,6 +246,24 @@ impl<T: Serialize + DeserializeOwned + Clone> Cache<T> {
         Ok(())
     }
 
+    /// Clean up the cache by removing expired entries
+    /// This method should be called periodically to prevent the cache from growing indefinitely
+    ///
+    /// # Returns
+    /// Ok if the cache was cleaned successfully
+    /// Err if the cache could not be cleaned
+    ///
+    /// # Errors
+    /// Returns an error if the database connection cannot be established
+    ///
+    /// # Example
+    /// ```rust
+    /// use pond_cache::Cache;
+    /// use std::path::PathBuf;
+    ///
+    /// let cache: Cache<String> = Cache::new(PathBuf::from("cache.db")).expect("Failed to create cache");
+    /// cache.clean().expect("Failed to clean cache");
+    /// ```
     pub fn clean(&self) -> Result<(), Error> {
         let db = Connection::open(self.path.as_path())?;
 
