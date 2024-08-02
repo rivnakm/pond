@@ -33,7 +33,7 @@ jobs:
 
       - name: Parse Semver
         id: parse-semver
-        uses: madhead/semver-utils@v4.0.0
+        uses: madhead/semver-utils@v4.3.0
         with:
           version: ${{ github.ref_name }}
 
