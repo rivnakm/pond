@@ -11,9 +11,10 @@ use serde::Serialize;
 pub use rusqlite::Error;
 
 /// Pond cache struct
-pub struct Cache<T> {
+pub struct Cache<K, T> {
     path: PathBuf,
     ttl: Duration,
+    key: std::marker::PhantomData<K>,
     data: std::marker::PhantomData<T>,
 }
 
@@ -27,7 +28,7 @@ where
     expiration: DateTime<Utc>,
 }
 
-impl<T: Serialize + DeserializeOwned + Clone> Cache<T> {
+impl<K: Hash, T: Serialize + DeserializeOwned + Clone> Cache<K, T> {
     /// Create a new cache with a default time-to-live of 10 minutes
     ///
     /// # Arguments
@@ -44,7 +45,7 @@ impl<T: Serialize + DeserializeOwned + Clone> Cache<T> {
     /// use pond_cache::Cache;
     /// use std::path::PathBuf;
     ///
-    /// let cache: Cache<String> = Cache::new(PathBuf::from("cache.db")).expect("Failed to create cache");
+    /// let cache: Cache<&str, String> = Cache::new(PathBuf::from("cache.db")).expect("Failed to create cache");
     /// ```
     pub fn new(path: PathBuf) -> Result<Self, Error> {
         Self::with_time_to_live(path, Duration::minutes(10))
@@ -68,7 +69,7 @@ impl<T: Serialize + DeserializeOwned + Clone> Cache<T> {
     /// use std::path::PathBuf;
     /// use chrono::Duration;
     ///
-    /// let cache: Cache<String> = Cache::with_time_to_live(PathBuf::from("cache.db"), Duration::minutes(5)).expect("Failed to create cache");
+    /// let cache: Cache<&str, String> = Cache::with_time_to_live(PathBuf::from("cache.db"), Duration::minutes(5)).expect("Failed to create cache");
     /// ```
     pub fn with_time_to_live(path: PathBuf, ttl: Duration) -> Result<Self, Error> {
         let db = Connection::open(path.as_path())?;
@@ -87,6 +88,7 @@ impl<T: Serialize + DeserializeOwned + Clone> Cache<T> {
         Ok(Self {
             path,
             ttl,
+            key: std::marker::PhantomData,
             data: std::marker::PhantomData,
         })
     }
@@ -108,11 +110,11 @@ impl<T: Serialize + DeserializeOwned + Clone> Cache<T> {
     /// use pond_cache::Cache;
     /// use std::path::PathBuf;
     ///
-    /// let cache: Cache<String> = Cache::new(PathBuf::from("cache.db")).expect("Failed to create cache");
+    /// let cache: Cache<&str, String> = Cache::new(PathBuf::from("cache.db")).expect("Failed to create cache");
     /// let key = "key";
     /// let value: Option<String> = cache.get(key).expect("Failed to get value");
     /// ```
-    pub fn get<K: Hash>(&self, key: K) -> Result<Option<T>, Error> {
+    pub fn get(&self, key: K) -> Result<Option<T>, Error> {
         let db = Connection::open(self.path.as_path())?;
 
         let mut stmt = db.prepare(
@@ -175,12 +177,12 @@ impl<T: Serialize + DeserializeOwned + Clone> Cache<T> {
     /// use pond_cache::Cache;
     /// use std::path::PathBuf;
     ///
-    /// let cache: Cache<String> = Cache::new(PathBuf::from("cache.db")).expect("Failed to create cache");
+    /// let cache: Cache<&str, String> = Cache::new(PathBuf::from("cache.db")).expect("Failed to create cache");
     /// let key = "key";
     /// let value = String::from("value");
     /// cache.store(key, value).expect("Failed to store value");
     /// ```
-    pub fn store<K: Hash>(&self, key: K, value: T) -> Result<(), Error> {
+    pub fn store(&self, key: K, value: T) -> Result<(), Error> {
         self.store_with_expiration(key, value, Utc::now() + self.ttl)
     }
 
@@ -205,14 +207,14 @@ impl<T: Serialize + DeserializeOwned + Clone> Cache<T> {
     /// use std::path::PathBuf;
     /// use chrono::{Duration, Utc};
     ///
-    /// let cache: Cache<String> = Cache::new(PathBuf::from("cache.db")).expect("Failed to create cache");
+    /// let cache: Cache<&str, String> = Cache::new(PathBuf::from("cache.db")).expect("Failed to create cache");
     /// let key = "key";
     /// let value = String::from("value");
     /// let expiration = Utc::now() + Duration::minutes(5);
     ///
     /// cache.store_with_expiration(key, value, expiration).expect("Failed to store value");
     /// ```
-    pub fn store_with_expiration<K: Hash>(
+    pub fn store_with_expiration(
         &self,
         key: K,
         value: T,
@@ -261,7 +263,7 @@ impl<T: Serialize + DeserializeOwned + Clone> Cache<T> {
     /// use pond_cache::Cache;
     /// use std::path::PathBuf;
     ///
-    /// let cache: Cache<String> = Cache::new(PathBuf::from("cache.db")).expect("Failed to create cache");
+    /// let cache: Cache<&str, String> = Cache::new(PathBuf::from("cache.db")).expect("Failed to create cache");
     /// cache.clean().expect("Failed to clean cache");
     /// ```
     pub fn clean(&self) -> Result<(), Error> {
@@ -370,7 +372,7 @@ mod tests {
             Uuid::new_v4(),
             rand::random::<u8>()
         ));
-        let cache: Cache<String> = Cache::new(filename.clone()).unwrap();
+        let cache: Cache<Uuid, String> = Cache::new(filename.clone()).unwrap();
         assert_eq!(cache.path, filename);
         assert_eq!(cache.ttl, Duration::minutes(10));
     }
@@ -382,8 +384,8 @@ mod tests {
             Uuid::new_v4(),
             rand::random::<u8>()
         ));
-        let _: Cache<String> = Cache::new(filename.clone()).unwrap();
-        let _: Cache<String> = Cache::new(filename).unwrap();
+        let _: Cache<Uuid, String> = Cache::new(filename.clone()).unwrap();
+        let _: Cache<Uuid, String> = Cache::new(filename).unwrap();
     }
 
     #[test]
@@ -393,7 +395,7 @@ mod tests {
             Uuid::new_v4(),
             rand::random::<u8>()
         ));
-        let cache: Cache<String> =
+        let cache: Cache<Uuid, String> =
             Cache::with_time_to_live(filename.clone(), Duration::minutes(5)).unwrap();
         assert_eq!(cache.path, filename);
         assert_eq!(cache.ttl, Duration::minutes(5));
@@ -506,7 +508,7 @@ mod tests {
 
     #[test]
     fn test_invalid_path() {
-        let cache: Result<Cache<String>, Error> =
+        let cache: Result<Cache<Uuid, String>, Error> =
             Cache::new(PathBuf::from("invalid/path/db.sqlite"));
 
         assert!(cache.is_err());
@@ -520,7 +522,7 @@ mod tests {
             rand::random::<u8>()
         ));
 
-        let cache: Cache<String> =
+        let cache: Cache<Uuid, String> =
             Cache::with_time_to_live(filename.clone(), Duration::minutes(5)).unwrap();
 
         let key = Uuid::new_v4().to_string();
@@ -554,7 +556,7 @@ mod tests {
             rand::random::<u8>()
         ));
 
-        let cache: Cache<String> =
+        let cache: Cache<Uuid, String> =
             Cache::with_time_to_live(filename.clone(), Duration::minutes(5)).unwrap();
 
         let key = Uuid::new_v4().to_string();
