@@ -12,7 +12,7 @@ repository = "https://github.com/mrivnak/pond"
 [dependencies]
 bitcode = { version = "0.6.0", default-features = false, features = ["serde"] }
 chrono = { version = "0.4.38", features = ["serde"] }
-rusqlite = { version = "0.35.0", features = ["blob", "bundled"] }
+rusqlite = { version = "0.36.0", features = ["blob", "bundled"] }
 serde = "1.0.202"
 
 [dev-dependencies]
